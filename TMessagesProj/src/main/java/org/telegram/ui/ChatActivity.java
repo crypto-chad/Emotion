@@ -456,6 +456,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     public MentionsContainerView mentionContainer;
     private AnimatorSet mentionListAnimation;
     public ChatAttachAlert chatAttachAlert;
+    private boolean addToVideoStickerLibraryMode;
     @Nullable
     private BlurredFrameLayout topChatPanelView;
     @Nullable
@@ -12638,6 +12639,21 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                         }
                         final HashMap<Object, Object> selectedPhotos = chatAttachAlert.getPhotoLayout().getSelectedPhotos();
                         final ArrayList<Object> selectedPhotosOrder = chatAttachAlert.getPhotoLayout().getSelectedPhotosOrder();
+                        if (addToVideoStickerLibraryMode) {
+                            addToVideoStickerLibraryMode = false;
+                            int added = 0;
+                            for (int i = 0; i < selectedPhotosOrder.size(); i++) {
+                                MediaController.PhotoEntry photoEntry = (MediaController.PhotoEntry) selectedPhotos.get(selectedPhotosOrder.get(i));
+                                if (photoEntry != null && photoEntry.isVideo && !TextUtils.isEmpty(photoEntry.path)) {
+                                    chatActivityEnterView.addLocalVideoSticker(photoEntry.path);
+                                    added++;
+                                }
+                            }
+                            BulletinFactory.of(ChatActivity.this)
+                                    .createSimpleBulletin(R.raw.contact_check, "Video sticker added: " + added)
+                                    .show();
+                            return;
+                        }
                         if (!selectedPhotos.isEmpty()) {
                             final int albumsCount = (int) Math.ceil(selectedPhotos.size() / 10f);
                             for (int i = 0; i < albumsCount; ++i) {
@@ -12701,6 +12717,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                         }
                         return;
                     } else if (chatAttachAlert != null) {
+                        addToVideoStickerLibraryMode = false;
                         chatAttachAlert.dismissWithButtonClick(button);
                     }
                     processSelectedAttach(button);
@@ -13587,6 +13604,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         if (getParentActivity() == null || chatActivityEnterView != null && !TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer())) {
             return;
         }
+        addToVideoStickerLibraryMode = false;
         createChatAttachView();
         chatAttachAlert.getPhotoLayout().loadGalleryPhotos();
         if (Build.VERSION.SDK_INT == 21 || Build.VERSION.SDK_INT == 22) {
@@ -13611,6 +13629,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         if (getParentActivity() == null) {
             return;
         }
+        addToVideoStickerLibraryMode = false;
         createChatAttachView();
         chatAttachAlert.getPhotoLayout().loadGalleryPhotos();
         if (Build.VERSION.SDK_INT == 21 || Build.VERSION.SDK_INT == 22) {
@@ -13626,6 +13645,23 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         } else {
             showDialog(chatAttachAlert);
         }
+    }
+
+    public void openAttachMenuForVideoStickerUpload() {
+        if (getParentActivity() == null) {
+            return;
+        }
+        createChatAttachView();
+        chatAttachAlert.getPhotoLayout().loadGalleryPhotos();
+        if (Build.VERSION.SDK_INT == 21 || Build.VERSION.SDK_INT == 22) {
+            chatActivityEnterView.closeKeyboard();
+        }
+        addToVideoStickerLibraryMode = true;
+        chatAttachAlert.setMaxSelectedPhotos(1, false);
+        chatAttachAlert.enableDefaultMode();
+        chatAttachAlert.init();
+        chatAttachAlert.parentThemeDelegate = themeDelegate;
+        showDialog(chatAttachAlert);
     }
 
     private void showFloatingDateView(boolean scroll) {

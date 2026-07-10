@@ -10640,6 +10640,51 @@ public class ChatActivityEnterView extends BlurredFrameLayout implements Notific
             }
 
             @Override
+            public void onVideoStickersUploadRequested() {
+                if (parentFragment instanceof ChatActivity) {
+                    ((ChatActivity) parentFragment).openAttachMenuForVideoStickerUpload();
+                } else if (delegate != null) {
+                    delegate.didPressAttachButton();
+                }
+            }
+
+            @Override
+            public void onVideoStickerPathSelected(String path) {
+                if (TextUtils.isEmpty(path)) {
+                    return;
+                }
+                SendMessagesHelper.prepareSendingVideoSticker(
+                        accountInstance,
+                        path,
+                        null,
+                        null,
+                        null,
+                        dialog_id,
+                        replyingMessageObject,
+                        getThreadMessage(),
+                        null,
+                        replyingQuote,
+                        null,
+                        0,
+                        editingMessageObject,
+                        true,
+                        0,
+                        false,
+                        false,
+                        null,
+                        parentFragment != null ? parentFragment.quickReplyShortcut : null,
+                        parentFragment != null ? parentFragment.getQuickReplyId() : 0,
+                        0,
+                        0,
+                        getSendMonoForumPeerId(),
+                        getSendMessageSuggestionParams()
+                );
+                if (delegate != null) {
+                    delegate.onMessageSend(null, true, 0, 0);
+                }
+            }
+
+            @Override
             public void onEmojiSettingsClick(ArrayList<TLRPC.TL_messages_stickerSet> frozenEmojiPacks) {
                 if (parentFragment != null) {
                     parentFragment.presentFragment(new StickersActivity(MediaDataController.TYPE_EMOJIPACKS, frozenEmojiPacks));
@@ -11476,6 +11521,39 @@ public class ChatActivityEnterView extends BlurredFrameLayout implements Notific
         MediaDataController.getInstance(currentAccount).addRecentGif(searchImage, (int) (System.currentTimeMillis() / 1000), true);
         if (emojiView != null) {
             emojiView.addRecentGif(searchImage);
+        }
+    }
+
+    public void addLocalVideoSticker(String path) {
+        if (TextUtils.isEmpty(path)) {
+            return;
+        }
+        // Persist even if emojiView isn't created/open yet
+        final String key = "local_video_stickers_paths";
+        SharedPreferences prefs = MessagesController.getEmojiSettings(currentAccount);
+        String existing = prefs.getString(key, "");
+        ArrayList<String> list = new ArrayList<>();
+        if (!TextUtils.isEmpty(existing)) {
+            String[] split = existing.split("\\n");
+            for (int i = 0; i < split.length; i++) {
+                if (!TextUtils.isEmpty(split[i]) && !path.equals(split[i])) {
+                    list.add(split[i]);
+                }
+            }
+        }
+        list.add(0, path);
+        while (list.size() > 100) {
+            list.remove(list.size() - 1);
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) sb.append('\n');
+            sb.append(list.get(i));
+        }
+        prefs.edit().putString(key, sb.toString()).apply();
+
+        if (emojiView != null) {
+            emojiView.addLocalVideoSticker(path);
         }
     }
 

@@ -4835,6 +4835,7 @@
     <string name="AccDescrStickerSet">Sticker set</string>
     <string name="AccDescrGIFs">GIFs</string>
     <string name="AccDescrStickers">Stickers</string>
+    <string name="AccDescrVStickers">Video Stickers</string>
     <string name="AccDescrExpandPanel">Expand panel</string>
     <string name="AccDescrCollapsePanel">Collapse panel</string>
     <string name="AccDescrUserOptions">User options</string>

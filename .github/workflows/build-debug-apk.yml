@@ -1,0 +1,63 @@
+name: Build debug APK
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: sdkmanager --install "ndk;21.4.7075529" "cmake;3.22.1"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Inject Telegram API credentials
+        if: ${{ secrets.TG_API_ID != '' && secrets.TG_API_HASH != '' }}
+        env:
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+        run: |
+          FILE=TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
+          sed -i "s/public static int APP_ID = .*/public static int APP_ID = ${TG_API_ID};/" "$FILE"
+          sed -i "s/public static String APP_HASH = .*/public static String APP_HASH = \"${TG_API_HASH}\";/" "$FILE"
+
+      - name: Build debug APK
+        run: ./gradlew :TMessagesProj_App:assembleAfatDebug -PAPP_VERSION_CODE=${{ github.run_number }} --no-daemon --stacktrace --build-cache
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK_PATH=$(find TMessagesProj_App/build/outputs/apk -name "*.apk" | head -n 1)
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Publish rolling debug release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: latest-debug
+          name: "Debug build #${{ github.run_number }}"
+          body: "Automatic debug build from commit ${{ github.sha }}"
+          allowUpdates: true
+          removeArtifacts: true
+          artifacts: ${{ steps.apk.outputs.path }}

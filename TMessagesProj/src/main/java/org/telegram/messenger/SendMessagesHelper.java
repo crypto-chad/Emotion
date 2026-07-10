@@ -2971,7 +2971,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     }
                     uploadedDocument.mime_type = document.mime_type;
                     uploadedDocument.attributes = document.attributes;
-                    if (!messageObject.isGif() && (videoEditedInfo == null || !videoEditedInfo.muted)) {
+                    if (!messageObject.isGif() && (videoEditedInfo == null || !videoEditedInfo.muted) && !(params != null && "1".equals(params.get("vst")))) {
                         uploadedDocument.nosound_video = true;
                         if (BuildVars.DEBUG_VERSION) {
                             FileLog.d("nosound_video = true");
@@ -4872,7 +4872,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         uploadedDocument.mime_type = document.mime_type;
                         uploadedDocument.attributes = document.attributes;
                         uploadedDocument.spoiler = hasMediaSpoilers;
-                        if (forceNoSoundVideo || !MessageObject.isRoundVideoDocument(document) && (videoEditedInfo == null || !videoEditedInfo.muted && !videoEditedInfo.roundVideo)) {
+                        if ((forceNoSoundVideo || !MessageObject.isRoundVideoDocument(document) && (videoEditedInfo == null || !videoEditedInfo.muted && !videoEditedInfo.roundVideo)) && !(params != null && "1".equals(params.get("vst")))) {
                             uploadedDocument.nosound_video = true;
                             if (BuildVars.DEBUG_VERSION) {
                                 FileLog.d("nosound_video = true");
@@ -7606,6 +7606,8 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     if (save) {
                         getMediaDataController().addRecentGif(sentMedia.document, sentMessage.date, true);
                     }
+                } else if (MessageObject.isVideoDocument(sentMedia.document) && !MessageObject.isRoundVideoDocument(sentMedia.document)) {
+                    getMediaDataController().addRecentGif(sentMedia.document, sentMessage.date, false);
                 } else if (MessageObject.isStickerDocument(sentMedia.document) || MessageObject.isAnimatedStickerDocument(sentMedia.document, true)) {
                     getMediaDataController().addRecentSticker(MediaDataController.TYPE_IMAGE, sentMessage, sentMedia.document, sentMessage.date, false);
                 }
@@ -9457,7 +9459,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         if (forceDocument) {
                             videoEditedInfo = null;
                         } else {
-                            videoEditedInfo = info.videoEditedInfo != null ? info.videoEditedInfo : createCompressionSettings(info.path);
+                            videoEditedInfo = info.videoEditedInfo != null ? info.videoEditedInfo : createCompressionSettings(info.path, false);
                         }
 
                         if (!forceDocument && (videoEditedInfo != null || info.path.endsWith("mp4"))) {
@@ -10051,7 +10053,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         return bitmap;
     }
 
-    private static VideoEditedInfo createCompressionSettings(String videoPath) {
+    private static final float VIDEO_STICKER_MAX_SIZE = 512.0f;
+
+    private static VideoEditedInfo createCompressionSettings(String videoPath, boolean asVideoSticker) {
         int[] params = new int[AnimatedFileDrawable.PARAM_NUM_COUNT];
         AnimatedFileDrawable.getVideoInfo(videoPath, params);
 
@@ -10183,6 +10187,33 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             videoEditedInfo.estimatedSize = 1;
         }
 
+        if (asVideoSticker) {
+            // Video stickers are short looping clips shown at small sizes, so they don't
+            // need the resolution/bitrate a regular video message gets: re-target them to
+            // a small canvas regardless of the ladder picked above, so the resulting file
+            // (and therefore playback start time) stays small. We deliberately leave audio
+            // alone here: muting flips the document into a GIF-classified attribute
+            // (TL_documentAttributeAnimated) elsewhere in this method, which would change
+            // documentAttachType and could break the video-sticker rendering path in
+            // ChatMessageCell that expects DOCUMENT_ATTACH_TYPE_VIDEO.
+            float curMaxSize = Math.max(videoEditedInfo.resultWidth, videoEditedInfo.resultHeight);
+            if (curMaxSize > VIDEO_STICKER_MAX_SIZE) {
+                float stickerScale = VIDEO_STICKER_MAX_SIZE / curMaxSize;
+                videoEditedInfo.resultWidth = Math.round(videoEditedInfo.resultWidth * stickerScale / 2) * 2;
+                videoEditedInfo.resultHeight = Math.round(videoEditedInfo.resultHeight * stickerScale / 2) * 2;
+            }
+            videoEditedInfo.bitrate = MediaController.makeVideoBitrate(
+                    videoEditedInfo.originalHeight, videoEditedInfo.originalWidth,
+                    originalBitrate,
+                    videoEditedInfo.resultHeight, videoEditedInfo.resultWidth
+            );
+            int encoderBitrate = MediaController.extractRealEncoderBitrate(videoEditedInfo.resultWidth, videoEditedInfo.resultHeight, videoEditedInfo.bitrate, false);
+            videoEditedInfo.estimatedSize = (long) (audioFramesSize + videoDuration / 1000.0f * encoderBitrate / 8);
+            if (videoEditedInfo.estimatedSize == 0) {
+                videoEditedInfo.estimatedSize = 1;
+            }
+        }
+
         return videoEditedInfo;
     }
 
@@ -10191,12 +10222,21 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         prepareSendingVideo(accountInstance, videoPath, info, coverPath, coverPhoto, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, entities, ttl, editingMessageObject, notify, scheduleDate, forceDocument, hasMediaSpoilers, caption, quickReplyShortcut, quickReplyShortcutId, effectId, stars, 0, null);
     }
 
+    @UiThread
+    public static void prepareSendingVideoSticker(AccountInstance accountInstance, String videoPath, VideoEditedInfo info, String coverPath, TLRPC.Photo coverPhoto, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, TL_stories.StoryItem storyItem, ChatActivity.ReplyQuote quote, ArrayList<TLRPC.MessageEntity> entities, int ttl, MessageObject editingMessageObject, boolean notify, int scheduleDate, boolean forceDocument, boolean hasMediaSpoilers, CharSequence caption, String quickReplyShortcut, int quickReplyShortcutId, long effectId, long stars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+        prepareSendingVideo(accountInstance, videoPath, info, coverPath, coverPhoto, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, entities, ttl, editingMessageObject, notify, scheduleDate, forceDocument, hasMediaSpoilers, caption, quickReplyShortcut, quickReplyShortcutId, effectId, stars, monoForumPeerId, suggestionParams, true);
+    }
+
     public static void prepareSendingVideo(AccountInstance accountInstance, String videoPath, VideoEditedInfo info, String coverPath, TLRPC.Photo coverPhoto, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, TL_stories.StoryItem storyItem, ChatActivity.ReplyQuote quote, ArrayList<TLRPC.MessageEntity> entities, int ttl, MessageObject editingMessageObject, boolean notify, int scheduleDate, boolean forceDocument, boolean hasMediaSpoilers, CharSequence caption, String quickReplyShortcut, int quickReplyShortcutId, long effectId, long stars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+        prepareSendingVideo(accountInstance, videoPath, info, coverPath, coverPhoto, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, entities, ttl, editingMessageObject, notify, scheduleDate, forceDocument, hasMediaSpoilers, caption, quickReplyShortcut, quickReplyShortcutId, effectId, stars, monoForumPeerId, suggestionParams, false);
+    }
+
+    private static void prepareSendingVideo(AccountInstance accountInstance, String videoPath, VideoEditedInfo info, String coverPath, TLRPC.Photo coverPhoto, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, TL_stories.StoryItem storyItem, ChatActivity.ReplyQuote quote, ArrayList<TLRPC.MessageEntity> entities, int ttl, MessageObject editingMessageObject, boolean notify, int scheduleDate, boolean forceDocument, boolean hasMediaSpoilers, CharSequence caption, String quickReplyShortcut, int quickReplyShortcutId, long effectId, long stars, long monoForumPeerId, MessageSuggestionParams suggestionParams, boolean asVideoSticker) {
         if (videoPath == null || videoPath.length() == 0) {
             return;
         }
         new Thread(() -> {
-            final VideoEditedInfo videoEditedInfo = info != null ? info : createCompressionSettings(videoPath);
+            final VideoEditedInfo videoEditedInfo = info != null ? info : createCompressionSettings(videoPath, asVideoSticker);
 
             boolean isEncrypted = DialogObject.isEncryptedDialog(dialogId);
 
@@ -10373,13 +10413,20 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 final HashMap<String, String> params = new HashMap<>();
                 final Bitmap thumbFinal = thumb;
                 final String thumbKeyFinal = thumbKey;
-                final String captionFinal = caption != null ? caption.toString() : "";
+                String captionBuilt = caption != null ? caption.toString() : "";
+                if (asVideoSticker && (captionBuilt.isEmpty() || !captionBuilt.startsWith(MessageObject.VIDEO_STICKER_CAPTION_SENTINEL))) {
+                    captionBuilt = MessageObject.VIDEO_STICKER_CAPTION_SENTINEL + captionBuilt;
+                }
+                final String captionFinal = captionBuilt;
                 final TLRPC.PhotoSize coverFinal = cover;
                 if (originalPath != null) {
                     params.put("originalPath", originalPath);
                 }
                 if (parentFinal != null) {
                     params.put("parentObject", parentFinal);
+                }
+                if (asVideoSticker) {
+                    params.put("vst", "1");
                 }
                 AndroidUtilities.runOnUIThread(() -> {
                     if (thumbFinal != null && thumbKeyFinal != null) {
@@ -10388,6 +10435,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     if (editingMessageObject != null) {
                         accountInstance.getSendMessagesHelper().editMessage(editingMessageObject, null, videoEditedInfo, videoFinal, finalPath, coverFinal, params, false, hasMediaSpoilers, parentFinal);
                     } else {
+                        MediaDataController.getInstance(accountInstance.getCurrentAccount()).addRecentGif(videoFinal, (int) (System.currentTimeMillis() / 1000), false);
                         SendMessageParams sendMessageParams = SendMessageParams.of(videoFinal, videoEditedInfo, finalPath, dialogId, replyToMsg, replyToTopMsg, captionFinal, entities, null, params, notify, scheduleDate, ttl, parentFinal, null, false, hasMediaSpoilers);
                         sendMessageParams.replyToStoryItem = storyItem;
                         sendMessageParams.replyQuote = quote;

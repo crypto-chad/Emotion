@@ -151,6 +151,35 @@ public class MessageObject {
     public static final int TYPE_GIFT_STARS = 30;
     public static final int TYPE_GIFT_THEME_UPDATE = 31;
 
+    /**
+     * Prefix stored in {@link TLRPC.Message#message} for client video-stickers so the hint syncs to other sessions.
+     * Invisible on most clients; stripped in {@link #generateCaption()}.
+     */
+    public static final String VIDEO_STICKER_CAPTION_SENTINEL = "\u2060\u200C\u200D\uFEFF\u200B\u2060\u200D";
+
+    public static String stripVideoStickerCaptionSentinel(String text) {
+        if (text == null || text.isEmpty()) {
+            return text;
+        }
+        int ix = text.indexOf(VIDEO_STICKER_CAPTION_SENTINEL);
+        if (ix < 0) {
+            return text;
+        }
+        return text.substring(0, ix) + text.substring(ix + VIDEO_STICKER_CAPTION_SENTINEL.length());
+    }
+
+    /** Video document shown as a client video-sticker (minimal chrome, autoplay with sound when allowed). */
+    public boolean isVideoStickerDisplay() {
+        if (type != TYPE_VIDEO || isRoundVideo()) {
+            return false;
+        }
+        if (messageOwner != null && messageOwner.params != null && "1".equals(messageOwner.params.get("vst"))) {
+            return true;
+        }
+        String msg = messageOwner != null ? messageOwner.message : null;
+        return msg != null && (msg.startsWith(VIDEO_STICKER_CAPTION_SENTINEL) || msg.indexOf(VIDEO_STICKER_CAPTION_SENTINEL) >= 0);
+    }
+
     public int localType;
     public String localName;
     public String localUserName;
@@ -6734,6 +6763,9 @@ public class MessageObject {
         if (messageOwner.translatedText != null && (captionTranslated = translated)) {
             text = messageOwner.translatedText.text;
             entities = messageOwner.translatedText.entities;
+        }
+        if (type == TYPE_VIDEO && text != null) {
+            text = stripVideoStickerCaptionSentinel(text);
         }
         if (!isMediaEmpty() && !(getMedia(messageOwner) instanceof TLRPC.TL_messageMediaGame) && !TextUtils.isEmpty(text)) {
             caption = Emoji.replaceEmoji(text, Theme.chat_msgTextPaint.getFontMetricsInt(), false);

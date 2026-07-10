@@ -1,0 +1,69 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Android: Install Debug",
+      "type": "shell",
+      "command": "gradlew.cmd :TMessagesProj_App:installAfatDebug --no-daemon",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Android: Launch App",
+      "type": "shell",
+      "command": "\"%LOCALAPPDATA%\\Android\\Sdk\\platform-tools\\adb.exe\" shell am start -n org.telegram.messenger.beta/org.telegram.ui.LaunchActivity",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Android: Stream Logs",
+      "type": "shell",
+      "command": "\"%LOCALAPPDATA%\\Android\\Sdk\\platform-tools\\adb.exe\" logcat -v time",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Android: Run & Stream Logs",
+      "type": "shell",
+      "command": "gradlew.cmd :TMessagesProj_App:installAfatDebug --no-daemon && \"%LOCALAPPDATA%\\Android\\Sdk\\platform-tools\\adb.exe\" shell am start -n org.telegram.messenger.beta/org.telegram.ui.LaunchActivity && \"%LOCALAPPDATA%\\Android\\Sdk\\platform-tools\\adb.exe\" logcat -v time",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "cmd.exe",
+          "args": ["/d", "/c"]
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "problemMatcher": [],
+      "group": "none"
+    }
+  ]
+}
