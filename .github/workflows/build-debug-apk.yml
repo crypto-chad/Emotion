@@ -11,6 +11,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TG_API_ID: ${{ secrets.TG_API_ID }}
+      TG_API_HASH: ${{ secrets.TG_API_HASH }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,10 +37,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Inject Telegram API credentials
-        if: ${{ secrets.TG_API_ID != '' && secrets.TG_API_HASH != '' }}
-        env:
-          TG_API_ID: ${{ secrets.TG_API_ID }}
-          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+        if: ${{ env.TG_API_ID != '' && env.TG_API_HASH != '' }}
         run: |
           FILE=TMessagesProj/src/main/java/org/telegram/messenger/BuildVars.java
           sed -i "s/public static int APP_ID = .*/public static int APP_ID = ${TG_API_ID};/" "$FILE"
