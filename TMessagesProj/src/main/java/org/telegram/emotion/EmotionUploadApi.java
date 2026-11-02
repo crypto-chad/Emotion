@@ -46,6 +46,19 @@ public class EmotionUploadApi {
         long expiresAt;
     }
 
+    /** Maps a file extension to a content type the backend accepts, or null if unsupported. */
+    public static String contentTypeFor(File file) {
+        String name = file.getName().toLowerCase();
+        if (name.endsWith(".mp4")) {
+            return "video/mp4";
+        } else if (name.endsWith(".webm")) {
+            return "video/webm";
+        } else if (name.endsWith(".mov")) {
+            return "video/quicktime";
+        }
+        return null;
+    }
+
     public static void uploadSticker(long telegramUserId, File file, String contentType, String packId, UploadCallback callback) {
         Utilities.globalQueue.postRunnable(() -> {
             try {

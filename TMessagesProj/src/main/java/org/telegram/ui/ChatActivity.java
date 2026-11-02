@@ -12646,6 +12646,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                                 MediaController.PhotoEntry photoEntry = (MediaController.PhotoEntry) selectedPhotos.get(selectedPhotosOrder.get(i));
                                 if (photoEntry != null && photoEntry.isVideo && !TextUtils.isEmpty(photoEntry.path)) {
                                     chatActivityEnterView.addLocalVideoSticker(photoEntry.path);
+                                    uploadVideoStickerToBackend(photoEntry.path);
                                     added++;
                                 }
                             }
@@ -13662,6 +13663,32 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         chatAttachAlert.init();
         chatAttachAlert.parentThemeDelegate = themeDelegate;
         showDialog(chatAttachAlert);
+    }
+
+    private void uploadVideoStickerToBackend(String path) {
+        final java.io.File file = new java.io.File(path);
+        final String contentType = org.telegram.emotion.EmotionUploadApi.contentTypeFor(file);
+        if (contentType == null) {
+            BulletinFactory.of(this).createErrorBulletin("Upload skipped: unsupported video format").show();
+            return;
+        }
+        org.telegram.emotion.EmotionUploadApi.uploadSticker(getUserConfig().getClientUserId(), file, contentType, null, new org.telegram.emotion.EmotionUploadApi.UploadCallback() {
+            @Override
+            public void onSuccess(String objectKey) {
+                if (getParentActivity() == null) {
+                    return;
+                }
+                BulletinFactory.of(ChatActivity.this).createSimpleBulletin(R.raw.contact_check, "Sticker uploaded").show();
+            }
+
+            @Override
+            public void onError(Exception error) {
+                if (getParentActivity() == null) {
+                    return;
+                }
+                BulletinFactory.of(ChatActivity.this).createErrorBulletin("Upload failed: " + error.getMessage()).show();
+            }
+        });
     }
 
     private void showFloatingDateView(boolean scroll) {
