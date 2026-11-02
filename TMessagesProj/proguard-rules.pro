@@ -107,3 +107,6 @@
 # Use -keep to explicitly keep any other classes shrinking would remove
 -dontoptimize
 -dontobfuscate
+
+# Emotion backend DTOs are (de)serialized reflectively by Gson
+-keepclassmembers class org.telegram.emotion.EmotionUploadApi$* { <fields>; }
