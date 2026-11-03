@@ -62,12 +62,21 @@ jobs:
           APK_PATH=$(find TMessagesProj_App/build/outputs/apk -name "*.apk" | head -n 1)
           echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Publish rolling debug release
+      # One release per build with a unique tag, so update checkers such as
+      # Obtainium (which compare the tag) see a new version every time.
+      - name: Publish debug release
         uses: ncipollo/release-action@v1
         with:
-          tag: latest-debug
+          tag: build-${{ github.run_number }}
+          commit: ${{ github.sha }}
           name: "Debug build #${{ github.run_number }}"
           body: "Automatic debug build from commit ${{ github.sha }}"
-          allowUpdates: true
-          removeArtifacts: true
+          makeLatest: true
           artifacts: ${{ steps.apk.outputs.path }}
+
+      - name: Prune old debug releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest-debug --cleanup-tag --yes || true
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | grep '^build-' | tail -n +6 | xargs -r -n1 gh release delete --cleanup-tag --yes
