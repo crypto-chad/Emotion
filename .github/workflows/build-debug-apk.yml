@@ -35,13 +35,13 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Cache native (.cxx) build
-        uses: actions/cache@v4
+      # Content-based compiler cache: reused objects don't depend on file mtimes,
+      # which a fresh checkout always resets (that defeated caching .cxx).
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
         with:
-          path: TMessagesProj/.cxx
-          key: cxx-${{ runner.os }}-${{ hashFiles('TMessagesProj/jni/**', 'TMessagesProj/build.gradle', 'TMessagesProj_App/build.gradle') }}
-          restore-keys: |
-            cxx-${{ runner.os }}-
+          key: ${{ runner.os }}-ndk21
+          max-size: 2G
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -54,6 +54,8 @@ jobs:
           sed -i "s/public static String APP_HASH = .*/public static String APP_HASH = \"${TG_API_HASH}\";/" "$FILE"
 
       - name: Build debug APK
+        env:
+          USE_CCACHE: 'true'
         run: ./gradlew :TMessagesProj_App:assembleAfatDebug -PAPP_VERSION_CODE=${{ github.run_number }} --no-daemon --stacktrace --build-cache
 
       - name: Locate APK
