@@ -40,7 +40,7 @@ jobs:
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: ${{ runner.os }}-ndk21
+          key: ${{ runner.os }}-ndk21-v2
           max-size: 2G
 
       - name: Grant execute permission for gradlew
@@ -56,6 +56,11 @@ jobs:
       - name: Build debug APK
         env:
           USE_CCACHE: 'true'
+          # sdkmanager reinstalls the NDK on every runner, and ccache hashes the
+          # compiler's mtime by default, so every call missed (0/8060 hits).
+          CCACHE_COMPILERCHECK: string:ndk-21.4.7075529
+          CCACHE_NOHASHDIR: 'true'
+          CCACHE_SLOPPINESS: time_macros
         run: ./gradlew :TMessagesProj_App:assembleAfatDebug -PAPP_VERSION_CODE=${{ github.run_number }} --no-daemon --stacktrace --build-cache
 
       - name: Locate APK
