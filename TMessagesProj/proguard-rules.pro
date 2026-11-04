@@ -110,3 +110,4 @@
 
 # Emotion backend DTOs are (de)serialized reflectively by Gson
 -keepclassmembers class org.telegram.emotion.EmotionUploadApi$* { <fields>; }
+-keepclassmembers class org.telegram.emotion.EmotionPacksApi$* { <fields>; }

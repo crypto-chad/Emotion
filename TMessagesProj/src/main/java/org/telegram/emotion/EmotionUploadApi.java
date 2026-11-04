@@ -1,5 +1,7 @@
 package org.telegram.emotion;
 
+import android.media.MediaMetadataRetriever;
+
 import com.google.gson.Gson;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -37,6 +39,15 @@ public class EmotionUploadApi {
         String contentType;
         long fileSizeBytes;
         String packId;
+        long durationMs;
+        Integer width;
+        Integer height;
+    }
+
+    private static class VideoMetadata {
+        long durationMs;
+        int width;
+        int height;
     }
 
     private static class UploadRequestResponse {
@@ -59,10 +70,16 @@ public class EmotionUploadApi {
         return null;
     }
 
+    /**
+     * Uploads a video as a sticker into the given pack. The backend registers it in the
+     * stickers table once R2 confirms the object, so the pack must already exist and
+     * belong to the user (see {@link EmotionPacksApi}).
+     */
     public static void uploadSticker(long telegramUserId, File file, String contentType, String packId, UploadCallback callback) {
         Utilities.globalQueue.postRunnable(() -> {
             try {
-                UploadRequestResponse response = requestUploadUrl(telegramUserId, contentType, file.length(), packId);
+                VideoMetadata metadata = readVideoMetadata(file);
+                UploadRequestResponse response = requestUploadUrl(telegramUserId, contentType, file.length(), packId, metadata);
                 putFile(response.uploadUrl, file, contentType);
                 AndroidUtilities.runOnUIThread(() -> callback.onSuccess(response.objectKey));
             } catch (Exception e) {
@@ -72,12 +89,51 @@ public class EmotionUploadApi {
         });
     }
 
-    private static UploadRequestResponse requestUploadUrl(long telegramUserId, String contentType, long fileSizeBytes, String packId) throws IOException {
+    /** Reads exact duration and (rotation-corrected) dimensions; the gallery's own values are truncated to whole seconds. */
+    private static VideoMetadata readVideoMetadata(File file) throws IOException {
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        try {
+            retriever.setDataSource(file.getAbsolutePath());
+            String duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            String width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH);
+            String height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT);
+            String rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+
+            VideoMetadata metadata = new VideoMetadata();
+            metadata.durationMs = duration != null ? Long.parseLong(duration) : 0;
+            metadata.width = width != null ? Integer.parseInt(width) : 0;
+            metadata.height = height != null ? Integer.parseInt(height) : 0;
+            if (rotation != null) {
+                int degrees = Integer.parseInt(rotation);
+                if (degrees == 90 || degrees == 270) {
+                    int swap = metadata.width;
+                    metadata.width = metadata.height;
+                    metadata.height = swap;
+                }
+            }
+            if (metadata.durationMs <= 0) {
+                throw new IOException("Could not read video duration");
+            }
+            return metadata;
+        } catch (RuntimeException e) {
+            throw new IOException("Could not read video metadata", e);
+        } finally {
+            try {
+                retriever.release();
+            } catch (Exception ignore) {
+            }
+        }
+    }
+
+    private static UploadRequestResponse requestUploadUrl(long telegramUserId, String contentType, long fileSizeBytes, String packId, VideoMetadata metadata) throws IOException {
         UploadRequestBody body = new UploadRequestBody();
         body.telegramUserId = telegramUserId;
         body.contentType = contentType;
         body.fileSizeBytes = fileSizeBytes;
         body.packId = packId;
+        body.durationMs = metadata.durationMs;
+        body.width = metadata.width > 0 ? metadata.width : null;
+        body.height = metadata.height > 0 ? metadata.height : null;
 
         byte[] payload = gson.toJson(body).getBytes(StandardCharsets.UTF_8);
 
@@ -127,7 +183,7 @@ public class EmotionUploadApi {
         connection.disconnect();
     }
 
-    private static String readStream(InputStream stream) throws IOException {
+    static String readStream(InputStream stream) throws IOException {
         if (stream == null) {
             return "";
         }

@@ -12642,17 +12642,21 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
                         if (addToVideoStickerLibraryMode) {
                             addToVideoStickerLibraryMode = false;
                             int added = 0;
+                            final ArrayList<String> videoStickerPaths = new ArrayList<>();
                             for (int i = 0; i < selectedPhotosOrder.size(); i++) {
                                 MediaController.PhotoEntry photoEntry = (MediaController.PhotoEntry) selectedPhotos.get(selectedPhotosOrder.get(i));
                                 if (photoEntry != null && photoEntry.isVideo && !TextUtils.isEmpty(photoEntry.path)) {
                                     chatActivityEnterView.addLocalVideoSticker(photoEntry.path);
-                                    uploadVideoStickerToBackend(photoEntry.path);
+                                    videoStickerPaths.add(photoEntry.path);
                                     added++;
                                 }
                             }
                             BulletinFactory.of(ChatActivity.this)
                                     .createSimpleBulletin(R.raw.contact_check, "Video sticker added: " + added)
                                     .show();
+                            if (!videoStickerPaths.isEmpty()) {
+                                chooseStickerPackAndUpload(videoStickerPaths);
+                            }
                             return;
                         }
                         if (!selectedPhotos.isEmpty()) {
@@ -13665,14 +13669,23 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
         showDialog(chatAttachAlert);
     }
 
-    private void uploadVideoStickerToBackend(String path) {
+    /** Asks whether to add to an existing pack or create a new one, then uploads each video into the chosen pack. */
+    private void chooseStickerPackAndUpload(ArrayList<String> paths) {
+        org.telegram.emotion.EmotionPackPicker.show(this, packId -> {
+            for (String path : paths) {
+                uploadVideoStickerToBackend(path, packId);
+            }
+        });
+    }
+
+    private void uploadVideoStickerToBackend(String path, String packId) {
         final java.io.File file = new java.io.File(path);
         final String contentType = org.telegram.emotion.EmotionUploadApi.contentTypeFor(file);
         if (contentType == null) {
             BulletinFactory.of(this).createErrorBulletin("Upload skipped: unsupported video format").show();
             return;
         }
-        org.telegram.emotion.EmotionUploadApi.uploadSticker(getUserConfig().getClientUserId(), file, contentType, null, new org.telegram.emotion.EmotionUploadApi.UploadCallback() {
+        org.telegram.emotion.EmotionUploadApi.uploadSticker(getUserConfig().getClientUserId(), file, contentType, packId, new org.telegram.emotion.EmotionUploadApi.UploadCallback() {
             @Override
             public void onSuccess(String objectKey) {
                 if (getParentActivity() == null) {
