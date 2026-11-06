@@ -20368,6 +20368,7 @@ public class MessagesController extends BaseController implements NotificationCe
         if (mode == ChatActivity.MODE_QUICK_REPLIES) {
             QuickRepliesController.getInstance(currentAccount).checkLocalMessages(messages);
         }
+        org.telegram.emotion.EmotionStickers.onMessagesReceived(messages);
         getNotificationCenter().postNotificationName(NotificationCenter.didReceiveNewMessages, dialogId, messages, scheduled, mode);
 
         if (lastMessage == null || scheduled) {

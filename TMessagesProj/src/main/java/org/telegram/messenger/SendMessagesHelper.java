@@ -10260,6 +10260,12 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     }
                     startTime = videoEditedInfo.startTime >= 0 ? videoEditedInfo.startTime : 0;
                 }
+                // Part of the cache key so a copy sent before this sticker reached the backend,
+                // which doesn't carry the hash, isn't reused for later sends.
+                final String emotionStickerHash = asVideoSticker && !isEncrypted ? org.telegram.emotion.EmotionStickers.getUploadedHash(videoPath) : null;
+                if (emotionStickerHash != null) {
+                    originalPath += "_" + emotionStickerHash;
+                }
                 TLRPC.TL_document document = null;
                 String parentObject = null;
                 if (!isEncrypted && ttl == 0 && (videoEditedInfo == null || videoEditedInfo.filterState == null && videoEditedInfo.paintPath == null && videoEditedInfo.mediaEntities == null && videoEditedInfo.cropState == null)) {
@@ -10320,6 +10326,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     }
                     attributeVideo.round_message = isRound;
                     document.attributes.add(attributeVideo);
+                    if (emotionStickerHash != null) {
+                        document.attributes.add(org.telegram.emotion.EmotionStickers.createFileNameAttribute(emotionStickerHash));
+                    }
                     if (videoEditedInfo != null && videoEditedInfo.notReadyYet) {
                         attributeVideo.w = videoEditedInfo.resultWidth;
                         attributeVideo.h = videoEditedInfo.resultHeight;

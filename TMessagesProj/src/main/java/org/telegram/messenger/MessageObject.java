@@ -11943,6 +11943,7 @@ public class MessageObject {
         if (videoQualities == null) {
             cachedQuality = null;
             hasVideoQualities(useFileDatabaseQueue);
+            org.telegram.emotion.EmotionStickers.attachCachedFile(this);
             return;
         }
         for (VideoPlayer.Quality q : videoQualities) {

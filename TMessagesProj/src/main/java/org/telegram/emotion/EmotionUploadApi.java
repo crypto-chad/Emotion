@@ -79,8 +79,10 @@ public class EmotionUploadApi {
         Utilities.globalQueue.postRunnable(() -> {
             try {
                 VideoMetadata metadata = readVideoMetadata(file);
+                String hash = EmotionStickers.sha256Hex(file);
                 UploadRequestResponse response = requestUploadUrl(telegramUserId, contentType, file.length(), packId, metadata);
                 putFile(response.uploadUrl, file, contentType);
+                EmotionStickers.rememberUploaded(file.getPath(), hash);
                 AndroidUtilities.runOnUIThread(() -> callback.onSuccess(response.objectKey));
             } catch (Exception e) {
                 FileLog.e("EmotionUploadApi: upload failed", e);

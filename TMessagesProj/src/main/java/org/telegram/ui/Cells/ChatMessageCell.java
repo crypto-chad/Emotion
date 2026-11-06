@@ -224,7 +224,7 @@ import java.util.Locale;
 import java.util.Stack;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate, ImageReceiver.ImageReceiverDelegate, DownloadController.FileDownloadProgressListener, TextSelectionHelper.SelectableView, NotificationCenter.NotificationCenterDelegate {
+public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate, ImageReceiver.ImageReceiverDelegate, DownloadController.FileDownloadProgressListener, TextSelectionHelper.SelectableView, NotificationCenter.NotificationCenterDelegate, org.telegram.emotion.EmotionStickers.Listener {
     private final static int TIME_APPEAR_MS = 200;
     private final static int UPLOADING_ALLOWABLE_ERROR = 1024 * 1024;
     private final static int STICKER_STATUS_OFFSET = 6;
@@ -9874,6 +9874,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             autoPlayingMedia = true;
                         }
                     }
+                    if (autoPlayingMedia && org.telegram.emotion.EmotionStickers.shouldWaitForFile(messageObject, this)) {
+                        // Show the preview for now; onEmotionStickerSettled binds the cell again.
+                        autoPlayingMedia = false;
+                    }
 //                    if (autoPlayingMedia && messageObject.type == MessageObject.TYPE_STORY && MessageObject.getMedia(messageObject) instanceof TLRPC.TL_messageMediaStory) {
 //                        TLRPC.TL_messageMediaStory mediaStory = (TLRPC.TL_messageMediaStory) MessageObject.getMedia(messageObject);
 //                        TL_stories.StoryItem storyItem = mediaStory.storyItem;
@@ -16645,6 +16649,16 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
     @Override
     public void onFailedDownload(String fileName, boolean canceled) {
         updateButtonState(true, documentAttachType == DOCUMENT_ATTACH_TYPE_AUDIO || documentAttachType == DOCUMENT_ATTACH_TYPE_MUSIC, false);
+    }
+
+    @Override
+    public void onEmotionStickerSettled(String hash) {
+        // The cell may have been reused for another message while it waited.
+        if (currentMessageObject == null || !hash.equals(org.telegram.emotion.EmotionStickers.getHash(currentMessageObject))) {
+            return;
+        }
+        currentMessageObject.checkMediaExistance();
+        forceResetMessageObject();
     }
 
     @Override
