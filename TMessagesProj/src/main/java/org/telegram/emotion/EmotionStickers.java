@@ -124,11 +124,9 @@ public final class EmotionStickers {
     public static void onMessagesReceived(ArrayList<MessageObject> messages) {
         for (int i = 0, size = messages.size(); i < size; i++) {
             MessageObject message = messages.get(i);
-            if (message != null && !message.isOut()) {
-                String hash = getHash(message);
-                if (hash != null) {
-                    startFetch(hash);
-                }
+            String hash = getHash(message);
+            if (hash != null && !isSentFromThisDevice(message)) {
+                startFetch(hash);
             }
         }
     }
@@ -148,13 +146,10 @@ public final class EmotionStickers {
         if (file == null || !file.exists()) {
             return;
         }
-        String attachPath = message.messageOwner.attachPath;
-        String path = file.getAbsolutePath();
-        // A message this device is sending or has just sent already has its own local file.
-        if (!TextUtils.isEmpty(attachPath) && !attachPath.equals(path) && new File(attachPath).exists()) {
+        if (isSentFromThisDevice(message)) {
             return;
         }
-        message.messageOwner.attachPath = path;
+        message.messageOwner.attachPath = file.getAbsolutePath();
         message.attachPathExists = true;
 
         VideoPlayer.VideoUri uri = new VideoPlayer.VideoUri();
@@ -171,7 +166,7 @@ public final class EmotionStickers {
      */
     public static boolean shouldWaitForFile(MessageObject message, Listener listener) {
         String hash = getHash(message);
-        if (hash == null || message.isOut()) {
+        if (hash == null || isSentFromThisDevice(message)) {
             return false;
         }
         attachCachedFile(message);
@@ -185,6 +180,24 @@ public final class EmotionStickers {
         }
         fetch.listeners.add(new WeakReference<>(listener));
         return true;
+    }
+
+    /**
+     * Whether this device already has the video because it sent the message. Being outgoing isn't
+     * enough: a sticker sent from the user's other device, or to their Saved Messages from one,
+     * is outgoing here too but still has to be downloaded.
+     */
+    private static boolean isSentFromThisDevice(MessageObject message) {
+        if (message.isSending() || message.isSendError()) {
+            return true;
+        }
+        String attachPath = message.messageOwner.attachPath;
+        if (TextUtils.isEmpty(attachPath) || !new File(attachPath).exists()) {
+            return false;
+        }
+        String hash = getHash(message);
+        File cacheFile = hash != null ? getCacheFile(hash) : null;
+        return cacheFile == null || !attachPath.equals(cacheFile.getAbsolutePath());
     }
 
     public static String getHash(MessageObject message) {
