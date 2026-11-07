@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -75,6 +76,7 @@ public final class EmotionStickers {
 
     private static final HashMap<String, Fetch> fetches = new HashMap<>();
     private static final HashMap<String, Long> recentFailures = new HashMap<>();
+    private static final HashSet<Integer> reportedMessages = new HashSet<>();
     private static final ExecutorService downloadExecutor = Executors.newFixedThreadPool(3);
     private static long lastNetworkFailureTime;
 
@@ -210,7 +212,28 @@ public final class EmotionStickers {
         if (message == null || message.type != MessageObject.TYPE_VIDEO || !message.isVideoStickerDisplay()) {
             return null;
         }
-        TLRPC.Document document = message.getDocument();
+        return findHash(message.getDocument());
+    }
+
+    /**
+     * Debug builds show what a video in Saved Messages looks like to this code, once per message,
+     * so a phone with no logs attached can tell why a fetch did or didn't happen.
+     */
+    public static void reportStateInDebug(MessageObject message) {
+        if (!BuildVars.DEBUG_VERSION || message == null || message.type != MessageObject.TYPE_VIDEO) {
+            return;
+        }
+        if (message.getDialogId() != UserConfig.getInstance(message.currentAccount).getClientUserId() || !reportedMessages.add(message.getId())) {
+            return;
+        }
+        String hash = findHash(message.getDocument());
+        File file = hash != null ? getCacheFile(hash) : null;
+        String text = "Sticker state: marker=" + message.isVideoStickerDisplay() + ", hash=" + (hash != null) + ", cached=" + (file != null && file.exists());
+        FileLog.d("EmotionStickers: " + text);
+        Toast.makeText(ApplicationLoader.applicationContext, text, Toast.LENGTH_LONG).show();
+    }
+
+    private static String findHash(TLRPC.Document document) {
         if (document == null || document.attributes == null) {
             return null;
         }

@@ -9866,7 +9866,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     }
 
                     if (!currentMessageObject.isHiddenSensitive() && (SharedConfig.isAutoplayVideo() || messageObject.isVideoStickerDisplay()) && !currentMessageObject.hasVideoCover() && !currentMessageObject.isRepostPreview && (!currentMessageObject.hasMediaSpoilers() || currentMessageObject.isMediaSpoilersRevealed || currentMessageObject.revealingMediaSpoilers) && (messageObject.type == MessageObject.TYPE_VIDEO /*|| messageObject.type == MessageObject.TYPE_STORY && messageObject.getDocument() != null*/) && !messageObject.needDrawBluredPreview() &&
-                            ((currentMessageObject.mediaExists || currentMessageObject.attachPathExists) || messageObject.canStreamVideo() && DownloadController.getInstance(currentAccount).canDownloadMedia(currentMessageObject))
+                            ((currentMessageObject.mediaExists || currentMessageObject.attachPathExists) || messageObject.canStreamVideo() && DownloadController.getInstance(currentAccount).canDownloadMedia(currentMessageObject) || org.telegram.emotion.EmotionStickers.getHash(messageObject) != null)
                     ) {
                         if (currentPosition != null) {
                             autoPlayingMedia = (currentPosition.flags & MessageObject.POSITION_FLAG_LEFT) != 0 && (currentPosition.flags & MessageObject.POSITION_FLAG_RIGHT) != 0;
@@ -9874,6 +9874,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                             autoPlayingMedia = true;
                         }
                     }
+                    org.telegram.emotion.EmotionStickers.reportStateInDebug(messageObject);
                     if (autoPlayingMedia && org.telegram.emotion.EmotionStickers.shouldWaitForFile(messageObject, this)) {
                         // Show the preview for now; onEmotionStickerSettled binds the cell again.
                         autoPlayingMedia = false;
