@@ -12,6 +12,7 @@ import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.UserConfig;
+import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.VideoPlayer;
 
@@ -60,6 +61,7 @@ public final class EmotionStickers {
     private static final long MAX_PLAYBACK_WAIT_MS = 1500;
     /** After a failure, don't make the next stickers wait for a backend that seems unreachable. */
     private static final long FAILURE_BACKOFF_MS = 60 * 1000;
+    private static final int SELF_TEST_DELIVERY_DELAY_S = 20;
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int READ_TIMEOUT_MS = 10000;
 
@@ -217,6 +219,18 @@ public final class EmotionStickers {
         String hash = getHash(message);
         File cacheFile = hash != null ? getCacheFile(hash) : null;
         return cacheFile == null || !attachPath.equals(cacheFile.getAbsolutePath());
+    }
+
+    /**
+     * In debug builds, a sticker sent to Saved Messages is scheduled a few seconds ahead, so the
+     * upload happens out of sight and the server then delivers it into the open chat, the way a
+     * recipient sees it arrive. Returns 0, meaning send now, everywhere else.
+     */
+    public static int getSelfTestScheduleDate(int account, long dialogId) {
+        if (!BuildVars.DEBUG_VERSION || dialogId != UserConfig.getInstance(account).getClientUserId()) {
+            return 0;
+        }
+        return ConnectionsManager.getInstance(account).getCurrentTime() + SELF_TEST_DELIVERY_DELAY_S;
     }
 
     /**

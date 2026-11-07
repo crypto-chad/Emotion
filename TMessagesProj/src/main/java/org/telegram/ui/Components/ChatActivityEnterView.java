@@ -10668,7 +10668,7 @@ public class ChatActivityEnterView extends BlurredFrameLayout implements Notific
                         0,
                         editingMessageObject,
                         true,
-                        0,
+                        org.telegram.emotion.EmotionStickers.getSelfTestScheduleDate(accountInstance.getCurrentAccount(), dialog_id),
                         false,
                         false,
                         null,
