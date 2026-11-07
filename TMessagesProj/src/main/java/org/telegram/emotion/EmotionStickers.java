@@ -138,7 +138,15 @@ public final class EmotionStickers {
         for (int i = 0, size = messages.size(); i < size; i++) {
             MessageObject message = messages.get(i);
             String hash = getHash(message);
-            if (hash != null && !isSentFromThisDevice(message)) {
+            // A scheduled message hasn't been delivered yet; fetching now would be wasted on a
+            // real send, and would make the self-test's file appear to arrive instantly.
+            if (hash == null || message.scheduled) {
+                continue;
+            }
+            if (isSelfTest(message) && !message.isSending() && !message.isSendError()) {
+                removeLocalCopies(message, hash);
+            }
+            if (!isSentFromThisDevice(message)) {
                 startFetch(hash);
             }
         }
@@ -179,7 +187,7 @@ public final class EmotionStickers {
      */
     public static boolean shouldWaitForFile(MessageObject message, Listener listener) {
         String hash = getHash(message);
-        if (hash == null || isSentFromThisDevice(message)) {
+        if (hash == null || message.scheduled || isSentFromThisDevice(message)) {
             return false;
         }
         attachCachedFile(message);
@@ -219,6 +227,26 @@ public final class EmotionStickers {
         String hash = getHash(message);
         File cacheFile = hash != null ? getCacheFile(hash) : null;
         return cacheFile == null || !attachPath.equals(cacheFile.getAbsolutePath());
+    }
+
+    /**
+     * Makes the self-test start from nothing, like a recipient who has never seen this sticker:
+     * the phone that sent it would otherwise already hold Telegram's copy and possibly ours.
+     * Only app-owned cache files are deleted; the original video the sender picked is left alone.
+     */
+    private static void removeLocalCopies(MessageObject message, String hash) {
+        File cached = getCacheFile(hash);
+        if (cached != null) {
+            cached.delete();
+        }
+        FileLoader loader = FileLoader.getInstance(message.currentAccount);
+        TLRPC.Document document = message.getDocument();
+        loader.getPathToAttach(document, null, false).delete();
+        loader.getPathToAttach(document, null, true).delete();
+        message.messageOwner.attachPath = "";
+        message.attachPathExists = false;
+        message.mediaExists = false;
+        message.cachedQuality = null;
     }
 
     /**
@@ -432,9 +460,9 @@ public final class EmotionStickers {
             // "ui" is time spent waiting for the main thread after the download finished, which is
             // large right after a cold start and isn't time the network took.
             long uiMs = elapsedMs - timing.queueMs - timing.responseMs - timing.bodyMs;
-            text = "Sticker: " + elapsedMs + " ms, " + (timing.bytes / 1024) + " KB"
-                    + "\nqueue " + timing.queueMs + ", response " + timing.responseMs + ", body " + timing.bodyMs + ", ui " + uiMs
-                    + "\nedge " + timing.edgeCache;
+            // Android cuts toasts off after two short lines.
+            text = elapsedMs + " ms, " + (timing.bytes / 1024) + " KB, edge " + timing.edgeCache
+                    + "\nq" + timing.queueMs + " resp" + timing.responseMs + " body" + timing.bodyMs + " ui" + uiMs;
         } else if (networkFailure) {
             text = "Sticker fetch failed after " + elapsedMs + " ms";
         } else {
