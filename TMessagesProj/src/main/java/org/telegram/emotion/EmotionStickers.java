@@ -11,6 +11,7 @@ import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessageObject;
+import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.VideoPlayer;
 
@@ -190,6 +191,11 @@ public final class EmotionStickers {
     private static boolean isSentFromThisDevice(MessageObject message) {
         if (message.isSending() || message.isSendError()) {
             return true;
+        }
+        // Lets one phone test the recipient flow: in debug builds, a sticker it sent to its own
+        // Saved Messages is treated as received, so it's fetched from the backend and played.
+        if (BuildVars.DEBUG_VERSION && message.getDialogId() == UserConfig.getInstance(message.currentAccount).getClientUserId()) {
+            return false;
         }
         String attachPath = message.messageOwner.attachPath;
         if (TextUtils.isEmpty(attachPath) || !new File(attachPath).exists()) {
