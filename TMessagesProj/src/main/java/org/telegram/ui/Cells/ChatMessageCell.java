@@ -16773,6 +16773,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                 blurredPhotoImage.setColorFilter(getFancyBlurFilter());
             }
             if (imageReceiver == photoImage && !thumb && documentAttachType == DOCUMENT_ATTACH_TYPE_VIDEO && currentMessageObject.isVideoStickerDisplay() && autoPlayingMedia && !currentMessageObject.needDrawBluredPreview()) {
+                org.telegram.emotion.EmotionStickers.reportVideoShownInDebug(currentMessageObject);
                 animatingNoSound = 0;
                 if (!MediaController.getInstance().isPlayingMessage(currentMessageObject) || MediaController.getInstance().isMessagePaused()) {
                     MediaController.getInstance().playMessage(currentMessageObject);
