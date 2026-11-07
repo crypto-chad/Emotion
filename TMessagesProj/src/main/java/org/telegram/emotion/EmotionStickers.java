@@ -68,6 +68,14 @@ public final class EmotionStickers {
         void onEmotionStickerSettled(String hash);
     }
 
+    private static class Timing {
+        long queueMs;
+        long responseMs;
+        long bodyMs;
+        long bytes;
+        String edgeCache;
+    }
+
     private static class Fetch {
         final long startTime = System.currentTimeMillis();
         final ArrayList<WeakReference<Listener>> listeners = new ArrayList<>();
@@ -177,6 +185,11 @@ public final class EmotionStickers {
         if (file == null || file.exists()) {
             return false;
         }
+        // Telegram's copy is already on disk, so it can play right now. The self-test keeps waiting,
+        // because otherwise it would never exercise the fetch on a phone that sent the sticker.
+        if (message.mediaExists && !isSelfTest(message)) {
+            return false;
+        }
         Fetch fetch = startFetch(hash);
         if (fetch == null || fetch.waitOver) {
             return false;
@@ -194,9 +207,7 @@ public final class EmotionStickers {
         if (message.isSending() || message.isSendError()) {
             return true;
         }
-        // Lets one phone test the recipient flow: in debug builds, a sticker it sent to its own
-        // Saved Messages is treated as received, so it's fetched from the backend and played.
-        if (BuildVars.DEBUG_VERSION && message.getDialogId() == UserConfig.getInstance(message.currentAccount).getClientUserId()) {
+        if (isSelfTest(message)) {
             return false;
         }
         String attachPath = message.messageOwner.attachPath;
@@ -206,6 +217,14 @@ public final class EmotionStickers {
         String hash = getHash(message);
         File cacheFile = hash != null ? getCacheFile(hash) : null;
         return cacheFile == null || !attachPath.equals(cacheFile.getAbsolutePath());
+    }
+
+    /**
+     * Lets one phone test the recipient flow: in debug builds, a sticker it sent to its own
+     * Saved Messages is treated as received, so it's fetched from the backend and played.
+     */
+    private static boolean isSelfTest(MessageObject message) {
+        return BuildVars.DEBUG_VERSION && message.getDialogId() == UserConfig.getInstance(message.currentAccount).getClientUserId();
     }
 
     public static String getHash(MessageObject message) {
@@ -228,7 +247,7 @@ public final class EmotionStickers {
         }
         String hash = findHash(message.getDocument());
         File file = hash != null ? getCacheFile(hash) : null;
-        String text = "Sticker state: marker=" + message.isVideoStickerDisplay() + ", hash=" + (hash != null) + ", cached=" + (file != null && file.exists());
+        String text = "Sticker state, message " + message.getId() + ": marker=" + message.isVideoStickerDisplay() + ", hash=" + (hash != null) + ", cached=" + (file != null && file.exists());
         FileLog.d("EmotionStickers: " + text);
         Toast.makeText(ApplicationLoader.applicationContext, text, Toast.LENGTH_LONG).show();
     }
@@ -272,19 +291,17 @@ public final class EmotionStickers {
     }
 
     private static void download(String hash, File target, Fetch fetch) {
-        boolean found = false;
         boolean networkFailed = false;
-        long bytes = 0;
+        final Timing timing = new Timing();
+        timing.queueMs = System.currentTimeMillis() - fetch.startTime;
         try {
-            bytes = fetchToFile(hash, target);
-            found = bytes > 0;
+            fetchToFile(hash, target, timing);
         } catch (Exception e) {
             networkFailed = true;
             FileLog.e("EmotionStickers: fetch failed", e);
         }
-        final boolean success = found;
+        final boolean success = timing.bytes > 0;
         final boolean networkFailure = networkFailed;
-        final long size = bytes;
         AndroidUtilities.runOnUIThread(() -> {
             fetches.remove(hash);
             long now = System.currentTimeMillis();
@@ -294,7 +311,7 @@ public final class EmotionStickers {
             if (networkFailure) {
                 lastNetworkFailureTime = now;
             }
-            reportTiming(success, networkFailure, now - fetch.startTime, size);
+            reportTiming(success, networkFailure, now - fetch.startTime, timing);
             settle(hash, fetch);
         });
         if (success) {
@@ -314,16 +331,20 @@ public final class EmotionStickers {
         }
     }
 
-    /** Returns the number of bytes stored, or 0 if the backend doesn't have this sticker. */
-    private static long fetchToFile(String hash, File target) throws IOException {
+    /** Leaves timing.bytes at 0 if the backend doesn't have this sticker. */
+    private static void fetchToFile(String hash, File target, Timing timing) throws IOException {
+        long requestStart = System.currentTimeMillis();
         // Not disconnected on success, so the connection can be reused by the next fetch.
         HttpURLConnection connection = (HttpURLConnection) new URL(EmotionApiConfig.BASE_URL + "/s/" + hash + ".mp4").openConnection();
         connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
         connection.setReadTimeout(READ_TIMEOUT_MS);
         int status = connection.getResponseCode();
+        long bodyStart = System.currentTimeMillis();
+        timing.responseMs = bodyStart - requestStart;
+        timing.edgeCache = connection.getHeaderField("cf-cache-status");
         if (status == HttpURLConnection.HTTP_NOT_FOUND) {
             connection.disconnect();
-            return 0;
+            return;
         }
         if (status != HttpURLConnection.HTTP_OK) {
             connection.disconnect();
@@ -349,7 +370,8 @@ public final class EmotionStickers {
             temp.delete();
             throw new IOException("Could not store sticker file");
         }
-        return total;
+        timing.bodyMs = System.currentTimeMillis() - bodyStart;
+        timing.bytes = total;
     }
 
     private static File getCacheFile(String hash) {
@@ -390,10 +412,15 @@ public final class EmotionStickers {
     }
 
     /** Debug builds show how long each fetch took, so it can be read straight off a test phone. */
-    private static void reportTiming(boolean success, boolean networkFailure, long elapsedMs, long bytes) {
+    private static void reportTiming(boolean success, boolean networkFailure, long elapsedMs, Timing timing) {
         String text;
         if (success) {
-            text = "Sticker: " + elapsedMs + " ms, " + (bytes / 1024) + " KB";
+            // "ui" is time spent waiting for the main thread after the download finished, which is
+            // large right after a cold start and isn't time the network took.
+            long uiMs = elapsedMs - timing.queueMs - timing.responseMs - timing.bodyMs;
+            text = "Sticker: " + elapsedMs + " ms, " + (timing.bytes / 1024) + " KB"
+                    + "\nqueue " + timing.queueMs + ", response " + timing.responseMs + ", body " + timing.bodyMs + ", ui " + uiMs
+                    + "\nedge " + timing.edgeCache;
         } else if (networkFailure) {
             text = "Sticker fetch failed after " + elapsedMs + " ms";
         } else {
@@ -401,7 +428,7 @@ public final class EmotionStickers {
         }
         FileLog.d("EmotionStickers: " + text);
         if (BuildVars.DEBUG_VERSION) {
-            Toast.makeText(ApplicationLoader.applicationContext, text, Toast.LENGTH_SHORT).show();
+            Toast.makeText(ApplicationLoader.applicationContext, text, Toast.LENGTH_LONG).show();
         }
     }
 }
