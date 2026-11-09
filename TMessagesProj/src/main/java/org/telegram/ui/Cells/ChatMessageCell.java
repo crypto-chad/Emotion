@@ -16658,6 +16658,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (currentMessageObject == null || !hash.equals(org.telegram.emotion.EmotionStickers.getHash(currentMessageObject))) {
             return;
         }
+        // Telegram's copy got here first and is already playing; reloading would restart it.
+        if (autoPlayingMedia) {
+            return;
+        }
         currentMessageObject.checkMediaExistance();
         forceResetMessageObject();
     }

@@ -62,8 +62,6 @@ public final class EmotionStickers {
     /** After a failure, don't make the next stickers wait for a backend that seems unreachable. */
     private static final long FAILURE_BACKOFF_MS = 60 * 1000;
     private static final int SELF_TEST_DELIVERY_DELAY_S = 20;
-    /** Keeps the self-test's wait on screen long enough to see what a recipient sees during it. */
-    private static final long SELF_TEST_HOLD_MS = 1000;
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int READ_TIMEOUT_MS = 10000;
 
@@ -84,7 +82,6 @@ public final class EmotionStickers {
         final long startTime = System.currentTimeMillis();
         final ArrayList<WeakReference<Listener>> listeners = new ArrayList<>();
         boolean waitOver;
-        long holdMs;
     }
 
     private static final HashMap<String, Fetch> fetches = new HashMap<>();
@@ -154,7 +151,7 @@ public final class EmotionStickers {
                 removeLocalCopies(message, hash);
             }
             if (!isSentFromThisDevice(message)) {
-                startFetch(hash, isSelfTest(message) ? SELF_TEST_HOLD_MS : 0);
+                startFetch(hash);
             }
         }
     }
@@ -297,8 +294,9 @@ public final class EmotionStickers {
         String hash = findHash(message.getDocument());
         File file = hash != null ? getCacheFile(hash) : null;
         int thumbCount = message.photoThumbs != null ? message.photoThumbs.size() : 0;
-        String text = "Message " + message.getId() + ": marker=" + message.isVideoStickerDisplay() + " hash=" + (hash != null) + " cached=" + (file != null && file.exists())
-                + "\nstripped=" + (message.strippedThumb != null) + " thumbs=" + thumbCount;
+        // Two short lines: Android cuts toasts off after that.
+        String text = "Msg " + message.getId() + " marker=" + yesNo(message.isVideoStickerDisplay()) + " hash=" + yesNo(hash != null)
+                + "\ncached=" + yesNo(file != null && file.exists()) + " strip=" + yesNo(message.strippedThumb != null) + " thumbs=" + thumbCount;
         FileLog.d("EmotionStickers: " + text);
         Toast.makeText(ApplicationLoader.applicationContext, text, Toast.LENGTH_LONG).show();
     }
@@ -320,6 +318,10 @@ public final class EmotionStickers {
         Toast.makeText(ApplicationLoader.applicationContext, "Video shown " + (System.currentTimeMillis() - arrival) + " ms after arrival\nfrom " + source, Toast.LENGTH_LONG).show();
     }
 
+    private static String yesNo(boolean value) {
+        return value ? "y" : "n";
+    }
+
     private static String findHash(TLRPC.Document document) {
         if (document == null || document.attributes == null) {
             return null;
@@ -336,10 +338,6 @@ public final class EmotionStickers {
 
     /** Returns the fetch in progress for this sticker, starting one if needed; null if it shouldn't be fetched now. */
     private static Fetch startFetch(String hash) {
-        return startFetch(hash, 0);
-    }
-
-    private static Fetch startFetch(String hash, long holdMs) {
         Fetch existing = fetches.get(hash);
         if (existing != null) {
             return existing;
@@ -355,8 +353,7 @@ public final class EmotionStickers {
         }
 
         Fetch fetch = new Fetch();
-        fetch.holdMs = holdMs;
-        fetch.waitOver =now - lastNetworkFailureTime < FAILURE_BACKOFF_MS;
+        fetch.waitOver = now - lastNetworkFailureTime < FAILURE_BACKOFF_MS;
         fetches.put(hash, fetch);
         AndroidUtilities.runOnUIThread(() -> settle(hash, fetch), MAX_PLAYBACK_WAIT_MS);
         downloadExecutor.execute(() -> download(hash, target, fetch));
@@ -365,12 +362,6 @@ public final class EmotionStickers {
 
     private static void download(String hash, File target, Fetch fetch) {
         boolean networkFailed = false;
-        if (fetch.holdMs > 0) {
-            try {
-                Thread.sleep(fetch.holdMs);
-            } catch (InterruptedException ignore) {
-            }
-        }
         final Timing timing = new Timing();
         timing.queueMs = System.currentTimeMillis() - fetch.startTime;
         try {
