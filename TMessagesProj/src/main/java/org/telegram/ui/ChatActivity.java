@@ -3119,6 +3119,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        setEmotionChatShown(false);
         if (chatActivityEnterView != null) {
             chatActivityEnterView.onDestroy();
         }
@@ -29666,9 +29667,24 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
 
     Bulletin.Delegate bulletinDelegate;
 
+    /** Whether this screen has told EmotionStickers it's visible, so shown/hidden calls stay paired. */
+    private boolean emotionChatShown;
+
+    private void setEmotionChatShown(boolean shown) {
+        if (emotionChatShown != shown) {
+            emotionChatShown = shown;
+            if (shown) {
+                org.telegram.emotion.EmotionStickers.onChatShown();
+            } else {
+                org.telegram.emotion.EmotionStickers.onChatHidden();
+            }
+        }
+    }
+
     @Override
     public void onResume() {
         super.onResume();
+        setEmotionChatShown(true);
         checkShowBlur(false);
         activityResumeTime = System.currentTimeMillis();
         if (openImport && getSendMessagesHelper().getImportingHistory(dialog_id) != null) {
@@ -29872,6 +29888,7 @@ public class ChatActivity extends BaseFragment implements NotificationCenter.Not
     @Override
     public void onPause() {
         super.onPause();
+        setEmotionChatShown(false);
         scrolling = false;
         if (scrimPopupWindow != null) {
             scrimPopupWindow.setPauseNotifications(false);

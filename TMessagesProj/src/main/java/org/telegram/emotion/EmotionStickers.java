@@ -60,6 +60,8 @@ public final class EmotionStickers {
     /** After a failure, don't make the next stickers wait for a backend that seems unreachable. */
     private static final long FAILURE_BACKOFF_MS = 60 * 1000;
     private static final int SELF_TEST_DELIVERY_DELAY_S = 20;
+    /** Under the roughly five-minute idle limit for pooled connections. */
+    private static final long WARM_UP_INTERVAL_MS = 4 * 60 * 1000;
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int READ_TIMEOUT_MS = 10000;
 
@@ -86,6 +88,8 @@ public final class EmotionStickers {
     private static final HashMap<String, Long> recentFailures = new HashMap<>();
     private static final ExecutorService downloadExecutor = Executors.newFixedThreadPool(3);
     private static long lastNetworkFailureTime;
+    private static int visibleChats;
+    private static boolean warmUpScheduled;
 
     private EmotionStickers() {
     }
@@ -284,9 +288,19 @@ public final class EmotionStickers {
             return;
         }
         File file = getCacheFile(hash);
-        int thumbCount = message.photoThumbs != null ? message.photoThumbs.size() : 0;
+        // Each preview's size type: "i" is the tiny one carried inside the message, which can be
+        // drawn instantly; the others have to be downloaded from Telegram first.
+        StringBuilder thumbs = new StringBuilder();
+        if (message.photoThumbs != null) {
+            for (TLRPC.PhotoSize size : message.photoThumbs) {
+                if (thumbs.length() > 0) {
+                    thumbs.append(' ');
+                }
+                thumbs.append(size instanceof TLRPC.TL_photoStrippedSize ? "i(inline)" : size.type);
+            }
+        }
         EmotionDebugReport.onState(hash, "marker " + yesNo(message.isVideoStickerDisplay()) + ", cached " + yesNo(file != null && file.exists())
-                + ", inline preview " + yesNo(message.strippedThumb != null) + ", thumbs " + thumbCount);
+                + ", previews [" + (thumbs.length() > 0 ? thumbs : "none") + "]");
     }
 
     /** Debug builds note when the video was set on screen and which file it played from. */
@@ -316,6 +330,53 @@ public final class EmotionStickers {
             }
         }
         return null;
+    }
+
+    // --- Warm connection ---
+
+    /**
+     * Keeps a connection to the backend open while a chat is on screen. Opening one costs a few
+     * hundred ms on mobile networks (363 ms in testing, against 56 ms on a reused one), while
+     * Telegram's copy arrives over a connection that is always open. The system keeps idle
+     * connections for about five minutes, so a small request every few minutes keeps one ready.
+     */
+    public static void onChatShown() {
+        visibleChats++;
+        warmUp();
+    }
+
+    public static void onChatHidden() {
+        visibleChats = Math.max(0, visibleChats - 1);
+    }
+
+    private static void warmUp() {
+        if (visibleChats == 0 || warmUpScheduled) {
+            return;
+        }
+        warmUpScheduled = true;
+        downloadExecutor.execute(EmotionStickers::pingBackend);
+        AndroidUtilities.runOnUIThread(() -> {
+            warmUpScheduled = false;
+            warmUp();
+        }, WARM_UP_INTERVAL_MS);
+    }
+
+    private static void pingBackend() {
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(EmotionApiConfig.BASE_URL + "/").openConnection();
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+            connection.setReadTimeout(READ_TIMEOUT_MS);
+            // Reading the body to the end and closing the stream, without disconnect(), hands the
+            // connection back to the pool for the next sticker fetch.
+            try (InputStream is = connection.getInputStream()) {
+                byte[] buffer = new byte[1024];
+                while (is.read(buffer) != -1) {
+                    // drain
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e("EmotionStickers: warm-up failed", e);
+        }
     }
 
     /** Returns the fetch in progress for this sticker, starting one if needed; null if it shouldn't be fetched now. */
