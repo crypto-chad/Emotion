@@ -3,7 +3,6 @@ package org.telegram.emotion;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.text.TextUtils;
-import android.widget.Toast;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
@@ -30,7 +29,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
@@ -86,8 +84,6 @@ public final class EmotionStickers {
 
     private static final HashMap<String, Fetch> fetches = new HashMap<>();
     private static final HashMap<String, Long> recentFailures = new HashMap<>();
-    private static final HashSet<Integer> reportedMessages = new HashSet<>();
-    private static final HashMap<String, Long> arrivalTimes = new HashMap<>();
     private static final ExecutorService downloadExecutor = Executors.newFixedThreadPool(3);
     private static long lastNetworkFailureTime;
 
@@ -144,9 +140,7 @@ public final class EmotionStickers {
             if (hash == null || message.scheduled) {
                 continue;
             }
-            if (BuildVars.DEBUG_VERSION) {
-                arrivalTimes.put(hash, System.currentTimeMillis());
-            }
+            EmotionDebugReport.onArrival(message, hash);
             if (isSelfTest(message) && !message.isSending() && !message.isSendError()) {
                 removeLocalCopies(message, hash);
             }
@@ -280,46 +274,34 @@ public final class EmotionStickers {
         return findHash(message.getDocument());
     }
 
-    /**
-     * Debug builds show what a video in Saved Messages looks like to this code, once per message,
-     * so a phone with no logs attached can tell why a fetch did or didn't happen.
-     */
+    /** Debug builds note how the cell saw this sticker when first showing it, for the debug report. */
     public static void reportStateInDebug(MessageObject message) {
         if (!BuildVars.DEBUG_VERSION || message == null || message.type != MessageObject.TYPE_VIDEO) {
             return;
         }
-        if (message.getDialogId() != UserConfig.getInstance(message.currentAccount).getClientUserId() || !reportedMessages.add(message.getId())) {
+        String hash = findHash(message.getDocument());
+        if (hash == null) {
             return;
         }
-        String hash = findHash(message.getDocument());
-        File file = hash != null ? getCacheFile(hash) : null;
+        File file = getCacheFile(hash);
         int thumbCount = message.photoThumbs != null ? message.photoThumbs.size() : 0;
-        // Two short lines: Android cuts toasts off after that.
-        String text = "Msg " + message.getId() + " marker=" + yesNo(message.isVideoStickerDisplay()) + " hash=" + yesNo(hash != null)
-                + "\ncached=" + yesNo(file != null && file.exists()) + " strip=" + yesNo(message.strippedThumb != null) + " thumbs=" + thumbCount;
-        FileLog.d("EmotionStickers: " + text);
-        Toast.makeText(ApplicationLoader.applicationContext, text, Toast.LENGTH_LONG).show();
+        EmotionDebugReport.onState(hash, "marker " + yesNo(message.isVideoStickerDisplay()) + ", cached " + yesNo(file != null && file.exists())
+                + ", inline preview " + yesNo(message.strippedThumb != null) + ", thumbs " + thumbCount);
     }
 
-    /**
-     * Debug builds show how long a sticker took from its message arriving to the video being set
-     * on screen, which is the wait a recipient actually feels, and which file it played from.
-     */
+    /** Debug builds note when the video was set on screen and which file it played from. */
     public static void reportVideoShownInDebug(MessageObject message) {
         if (!BuildVars.DEBUG_VERSION) {
             return;
         }
         String hash = getHash(message);
-        Long arrival = hash != null ? arrivalTimes.remove(hash) : null;
-        if (arrival == null) {
-            return;
+        if (hash != null) {
+            EmotionDebugReport.onVideoShown(hash, message.cachedQuality != null);
         }
-        String source = message.cachedQuality != null ? "backend" : "Telegram";
-        Toast.makeText(ApplicationLoader.applicationContext, "Video shown " + (System.currentTimeMillis() - arrival) + " ms after arrival\nfrom " + source, Toast.LENGTH_LONG).show();
     }
 
     private static String yesNo(boolean value) {
-        return value ? "y" : "n";
+        return value ? "yes" : "no";
     }
 
     private static String findHash(TLRPC.Document document) {
@@ -381,7 +363,7 @@ public final class EmotionStickers {
             if (networkFailure) {
                 lastNetworkFailureTime = now;
             }
-            reportTiming(success, networkFailure, now - fetch.startTime, timing);
+            reportTiming(hash, success, networkFailure, now - fetch.startTime, timing);
             settle(hash, fetch);
         });
         if (success) {
@@ -481,24 +463,21 @@ public final class EmotionStickers {
         }
     }
 
-    /** Debug builds show how long each fetch took, so it can be read straight off a test phone. */
-    private static void reportTiming(boolean success, boolean networkFailure, long elapsedMs, Timing timing) {
+    /** Logs how long each fetch took, and adds it to the debug report in debug builds. */
+    private static void reportTiming(String hash, boolean success, boolean networkFailure, long elapsedMs, Timing timing) {
         String text;
         if (success) {
             // "ui" is time spent waiting for the main thread after the download finished, which is
             // large right after a cold start and isn't time the network took.
             long uiMs = elapsedMs - timing.queueMs - timing.responseMs - timing.bodyMs;
-            // Android cuts toasts off after two short lines.
             text = elapsedMs + " ms, " + (timing.bytes / 1024) + " KB, edge " + timing.edgeCache
-                    + "\nq" + timing.queueMs + " resp" + timing.responseMs + " body" + timing.bodyMs + " ui" + uiMs;
+                    + " (queue " + timing.queueMs + ", response " + timing.responseMs + ", body " + timing.bodyMs + ", ui " + uiMs + ")";
         } else if (networkFailure) {
-            text = "Sticker fetch failed after " + elapsedMs + " ms";
+            text = "failed after " + elapsedMs + " ms";
         } else {
-            text = "Sticker not on backend yet (" + elapsedMs + " ms)";
+            text = "not on backend yet (" + elapsedMs + " ms)";
         }
-        FileLog.d("EmotionStickers: " + text);
-        if (BuildVars.DEBUG_VERSION) {
-            Toast.makeText(ApplicationLoader.applicationContext, text, Toast.LENGTH_LONG).show();
-        }
+        FileLog.d("EmotionStickers: fetch " + text);
+        EmotionDebugReport.onFetchDone(hash, text);
     }
 }
