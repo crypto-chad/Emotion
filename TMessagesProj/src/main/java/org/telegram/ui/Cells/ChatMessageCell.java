@@ -16748,6 +16748,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     @Override
     public void didSetImage(ImageReceiver imageReceiver, boolean set, boolean thumb, boolean memCache) {
+        if (set && thumb && imageReceiver == photoImage && currentMessageObject != null) {
+            org.telegram.emotion.EmotionStickers.reportPreviewSetInDebug(currentMessageObject);
+        }
         if (currentMessageObject != null && set) {
             if (setCurrentDiceValue(!memCache && !currentMessageObject.wasUnread)) {
                 return;

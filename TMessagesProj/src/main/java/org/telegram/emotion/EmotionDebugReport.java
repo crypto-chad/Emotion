@@ -29,6 +29,8 @@ final class EmotionDebugReport {
     private String state;
     private String fetch;
     private String shown;
+    private boolean waited;
+    private long previewMs = -1;
     private boolean sent;
 
     private EmotionDebugReport(int account, String hash) {
@@ -49,6 +51,22 @@ final class EmotionDebugReport {
         EmotionDebugReport report = reports.get(hash);
         if (report != null && report.state == null) {
             report.state = state;
+        }
+    }
+
+    /** The cell held off playing and showed its preview instead, waiting for the backend. */
+    static void onWaiting(String hash) {
+        EmotionDebugReport report = reports.get(hash);
+        if (report != null) {
+            report.waited = true;
+        }
+    }
+
+    /** The cell put a preview image on screen. */
+    static void onPreviewSet(String hash) {
+        EmotionDebugReport report = reports.get(hash);
+        if (report != null && report.previewMs < 0) {
+            report.previewMs = System.currentTimeMillis() - report.arrivalTime;
         }
     }
 
@@ -84,6 +102,7 @@ final class EmotionDebugReport {
         }
         String text = "Sticker " + hash.substring(0, 8)
                 + "\nshown: " + (shown != null ? shown : "not shown (chat not open?)")
+                + "\ncell: waited " + (waited ? "yes" : "no") + ", preview " + (previewMs >= 0 ? "at " + previewMs + " ms" : "never set")
                 + "\nfetch: " + (fetch != null ? fetch : "not finished")
                 + "\nstate: " + (state != null ? state : "not bound");
         FileLog.d("EmotionStickers: " + text.replace('\n', ' '));

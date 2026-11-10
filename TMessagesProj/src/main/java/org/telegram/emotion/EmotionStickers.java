@@ -207,6 +207,7 @@ public final class EmotionStickers {
             return false;
         }
         fetch.listeners.add(new WeakReference<>(listener));
+        EmotionDebugReport.onWaiting(hash);
         return true;
     }
 
@@ -301,6 +302,17 @@ public final class EmotionStickers {
         }
         EmotionDebugReport.onState(hash, "marker " + yesNo(message.isVideoStickerDisplay()) + ", cached " + yesNo(file != null && file.exists())
                 + ", previews [" + (thumbs.length() > 0 ? thumbs : "none") + "]");
+    }
+
+    /** Debug builds note when the cell put a preview image on screen. */
+    public static void reportPreviewSetInDebug(MessageObject message) {
+        if (!BuildVars.DEBUG_VERSION) {
+            return;
+        }
+        String hash = getHash(message);
+        if (hash != null) {
+            EmotionDebugReport.onPreviewSet(hash);
+        }
     }
 
     /** Debug builds note when the video was set on screen and which file it played from. */
