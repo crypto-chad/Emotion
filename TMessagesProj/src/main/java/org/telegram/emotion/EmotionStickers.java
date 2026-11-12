@@ -1,6 +1,7 @@
 package org.telegram.emotion;
 
 import android.content.SharedPreferences;
+import android.graphics.drawable.BitmapDrawable;
 import android.net.Uri;
 import android.text.TextUtils;
 
@@ -8,6 +9,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLoader;
+import org.telegram.messenger.ImageLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.UserConfig;
@@ -145,6 +147,7 @@ public final class EmotionStickers {
                 continue;
             }
             EmotionDebugReport.onArrival(message, hash);
+            prepareInlinePreview(message);
             if (isSelfTest(message) && !message.isSending() && !message.isSendError()) {
                 removeLocalCopies(message, hash);
             }
@@ -165,6 +168,7 @@ public final class EmotionStickers {
         if (hash == null) {
             return;
         }
+        prepareInlinePreview(message);
         File file = getCacheFile(hash);
         if (file == null || !file.exists()) {
             return;
@@ -181,6 +185,28 @@ public final class EmotionStickers {
         uri.docId = uri.document.id;
         uri.uri = Uri.fromFile(file);
         message.cachedQuality = uri;
+    }
+
+    /**
+     * Decodes the tiny preview carried inside the message, so the cell draws it the moment it shows
+     * the sticker. The app only does this ahead of time on high-end phones; elsewhere the cell is
+     * meant to load it on demand, but in testing no preview ever appeared while a sticker waited.
+     */
+    private static void prepareInlinePreview(MessageObject message) {
+        if (message.strippedThumb != null || message.photoThumbs == null) {
+            return;
+        }
+        for (int i = 0, size = message.photoThumbs.size(); i < size; i++) {
+            TLRPC.PhotoSize photoSize = message.photoThumbs.get(i);
+            if (photoSize instanceof TLRPC.TL_photoStrippedSize) {
+                try {
+                    message.strippedThumb = new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), ImageLoader.getStrippedPhotoBitmap(photoSize.bytes, "b"));
+                } catch (Throwable e) {
+                    FileLog.e(e);
+                }
+                return;
+            }
+        }
     }
 
     /**
