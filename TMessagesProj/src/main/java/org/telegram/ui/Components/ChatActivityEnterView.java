@@ -10653,6 +10653,7 @@ public class ChatActivityEnterView extends BlurredFrameLayout implements Notific
                 if (TextUtils.isEmpty(path)) {
                     return;
                 }
+                org.telegram.emotion.EmotionStickers.warmEdgeForSend(path);
                 SendMessagesHelper.prepareSendingVideoSticker(
                         accountInstance,
                         path,

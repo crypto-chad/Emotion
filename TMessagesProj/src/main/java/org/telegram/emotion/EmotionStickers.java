@@ -64,6 +64,8 @@ public final class EmotionStickers {
     private static final int SELF_TEST_DELIVERY_DELAY_S = 20;
     /** Under the roughly five-minute idle limit for pooled connections. */
     private static final long WARM_UP_INTERVAL_MS = 4 * 60 * 1000;
+    /** A sticker sent again within this time is assumed to still be in the nearby cache. */
+    private static final long EDGE_WARM_UP_INTERVAL_MS = 10 * 60 * 1000;
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final int READ_TIMEOUT_MS = 10000;
 
@@ -90,6 +92,7 @@ public final class EmotionStickers {
     private static final HashMap<String, Long> recentFailures = new HashMap<>();
     private static final ExecutorService downloadExecutor = Executors.newFixedThreadPool(3);
     private static long lastNetworkFailureTime;
+    private static final HashMap<String, Long> lastEdgeWarmUps = new HashMap<>();
     private static int visibleChats;
     private static boolean warmUpScheduled;
 
@@ -122,6 +125,38 @@ public final class EmotionStickers {
     /** The hash of a sticker this device uploaded, or null if this file isn't on the backend. */
     public static String getUploadedHash(String path) {
         return TextUtils.isEmpty(path) ? null : prefs().getString(path, null);
+    }
+
+    /**
+     * Called when the user taps a sticker to send it. Asks the backend for the file, so the
+     * Cloudflare location near the sender copies it from the bucket now; recipients are often
+     * near the sender, and then get it from that cache instead of waiting on the bucket in
+     * North America. A HEAD request is enough: on a cold cache Cloudflare fetches the whole file,
+     * and a recipient's request arriving meanwhile joins that fetch instead of starting another.
+     */
+    public static void warmEdgeForSend(String path) {
+        String hash = getUploadedHash(path);
+        if (hash == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Long lastWarmed = lastEdgeWarmUps.get(hash);
+        if (lastWarmed != null && now - lastWarmed < EDGE_WARM_UP_INTERVAL_MS) {
+            return;
+        }
+        lastEdgeWarmUps.put(hash, now);
+        downloadExecutor.execute(() -> {
+            try {
+                HttpURLConnection connection = (HttpURLConnection) new URL(EmotionApiConfig.BASE_URL + "/s/" + hash + ".mp4").openConnection();
+                connection.setRequestMethod("HEAD");
+                connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+                connection.setReadTimeout(READ_TIMEOUT_MS);
+                FileLog.d("EmotionStickers: edge warm-up " + connection.getResponseCode() + ", edge " + connection.getHeaderField("cf-cache-status"));
+                connection.getInputStream().close();
+            } catch (Exception e) {
+                FileLog.e("EmotionStickers: edge warm-up failed", e);
+            }
+        });
     }
 
     public static TLRPC.TL_documentAttributeFilename createFileNameAttribute(String hash) {
