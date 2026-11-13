@@ -6733,15 +6733,9 @@ public class EmojiView extends FrameLayout implements NotificationCenter.Notific
     }
 
     private ArrayList<Object> getVideoStickerItems() {
-        ArrayList<Object> result = new ArrayList<>();
-        result.addAll(localVideoStickerPaths);
-        for (int i = 0; i < recentGifs.size(); i++) {
-            TLRPC.Document document = recentGifs.get(i);
-            if (document != null && MessageObject.isVideoDocument(document)) {
-                result.add(document);
-            }
-        }
-        return result;
+        // Only the user's own stickers. Recent-GIF videos used to be listed too, which showed every
+        // sent sticker a second time as a blurry Telegram copy at the bottom of the tab.
+        return new ArrayList<>(localVideoStickerPaths);
     }
 
     private void loadLocalVideoStickerPaths() {
