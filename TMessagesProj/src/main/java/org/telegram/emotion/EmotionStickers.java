@@ -391,6 +391,11 @@ public final class EmotionStickers {
         return value ? "yes" : "no";
     }
 
+    /** The sticker's content hash from its file name, or null if this document isn't one of ours. */
+    public static String getHash(TLRPC.Document document) {
+        return findHash(document);
+    }
+
     private static String findHash(TLRPC.Document document) {
         if (document == null || document.attributes == null) {
             return null;
